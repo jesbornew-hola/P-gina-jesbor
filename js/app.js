@@ -1045,7 +1045,23 @@
   }
 
   /* ---------------- Exportar / respaldo ---------------- */
+  // En claude.ai las descargas pasan por el visor; en un navegador normal, por un enlace
+  let saver = null;
+  try {
+    if (window.claude && typeof window.claude.use === 'function') {
+      window.claude.use('downloads').then(x => { saver = x; }, () => {});
+    }
+  } catch (e) { /* sin visor */ }
+
   function download(name, content, type) {
+    if (saver) {
+      saver.save({ filename: name, data: content }).then(
+        () => toast('Archivo guardado'),
+        err => { if (!err || err.code !== 'declined') toast('No se pudo descargar. Usa "Copiar texto".', { error: true }); }
+      );
+      return;
+    }
+    if (EMBEDDED) { toast('La descarga no está disponible aquí. Usa "Copiar texto".', { error: true }); return; }
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

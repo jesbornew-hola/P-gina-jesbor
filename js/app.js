@@ -7,6 +7,8 @@
   'use strict';
 
   const STORE_KEY = 'jesbor-barberia-v1';
+  // Dentro de un marco (p. ej. una vista incrustada) imprimir y descargar pueden estar bloqueados
+  const EMBEDDED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
 
   const PAY = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
   const EXPENSE_CATS = ['Insumos', 'Alquiler', 'Servicios (luz, agua, internet)', 'Equipo', 'Comida', 'Transporte', 'Otros'];
@@ -291,7 +293,7 @@
       '<div class="modal-body">' + o.body + '</div>' +
       '<div class="modal-foot">' +
       (o.danger ? '<button type="button" class="btn btn-danger" data-danger>' + icon('trash') + esc(o.danger) + '</button><span class="spacer"></span>' : '') +
-      '<button type="button" class="btn" data-close>Cancelar</button>' +
+      (o.noCancel ? '' : '<button type="button" class="btn" data-close>Cancelar</button>') +
       '<button type="submit" class="btn btn-primary">' + esc(o.submit || 'Guardar') + '</button>' +
       '</div></form></div>';
     const back = root.firstChild;
@@ -319,6 +321,10 @@
   function closeModal() {
     document.getElementById('modal-root').innerHTML = '';
     if (modalCleanup) { modalCleanup(); modalCleanup = null; }
+  }
+
+  function confirmBox(title, message, okLabel, onOk) {
+    openModal({ title, body: '<p style="margin-top:0">' + message + '</p>', submit: okLabel, onSubmit: onOk });
   }
 
   function field(label, input, hint) {
@@ -355,9 +361,11 @@
         save(); toast(id ? 'Servicio actualizado' : 'Servicio creado');
       },
       onDanger() {
-        if (!confirm('¿Eliminar "' + s.name + '"? Los cortes ya registrados se conservan en el informe.')) return false;
-        state.services = state.services.filter(x => x.id !== id);
-        save(); toast('Servicio eliminado');
+        confirmBox('Eliminar servicio', '¿Eliminar <strong>' + esc(s.name) + '</strong>? Los cortes ya registrados se conservan en el informe.', 'Eliminar', () => {
+          state.services = state.services.filter(x => x.id !== id);
+          save(); toast('Servicio eliminado');
+        });
+        return false;
       }
     });
   }
@@ -382,9 +390,11 @@
         save(); toast(id ? 'Producto actualizado' : 'Producto creado');
       },
       onDanger() {
-        if (!confirm('¿Eliminar "' + p.name + '"? Las ventas ya registradas se conservan.')) return false;
-        state.products = state.products.filter(x => x.id !== id);
-        save(); toast('Producto eliminado');
+        confirmBox('Eliminar producto', '¿Eliminar <strong>' + esc(p.name) + '</strong>? Las ventas ya registradas se conservan.', 'Eliminar', () => {
+          state.products = state.products.filter(x => x.id !== id);
+          save(); toast('Producto eliminado');
+        });
+        return false;
       }
     });
   }
@@ -656,7 +666,7 @@
 
     return '' +
       '<div class="page-head"><div><h1>' + hello + '</h1><p>' + longDate(t) + '</p></div>' +
-      '<div class="head-actions"><a class="btn" href="#/finanzas">' + icon('chart') + 'Ver informe</a><button class="btn btn-primary" data-act="custom-corte">' + icon('plus') + 'Registrar corte</button></div></div>' +
+      '<div class="head-actions"><a class="btn" href="#finanzas">' + icon('chart') + 'Ver informe</a><button class="btn btn-primary" data-act="custom-corte">' + icon('plus') + 'Registrar corte</button></div></div>' +
 
       '<div class="grid kpis">' +
       kpi('Ingresos de hoy', money(S.income), deltaChip(S.income, Y.income, 'vs ayer'), {
@@ -668,9 +678,9 @@
       kpi('Ganancia neta hoy', money(S.net), 'Gastos ' + money(S.exp) + ' · Costo prod. ' + money(S.cogs), { color: S.net >= 0 ? 'var(--good)' : 'var(--bad)' }) +
       '</div>' +
 
-      '<div class="section-title">Agregar corte rápido <span class="split" style="gap:6px"><a class="btn btn-sm btn-ghost" href="#/cortes">Administrar</a></span></div>' +
+      '<div class="section-title">Agregar corte rápido <span class="split" style="gap:6px"><a class="btn btn-sm btn-ghost" href="#cortes">Administrar</a></span></div>' +
       '<div class="card">' + paySelector() +
-      (state.services.length ? '<div class="quick">' + services + '</div>' : emptyState('scissors', 'No tienes servicios. <a href="#/cortes">Crea uno</a>.')) +
+      (state.services.length ? '<div class="quick">' + services + '</div>' : emptyState('scissors', 'No tienes servicios. <a href="#cortes">Crea uno</a>.')) +
       '</div>' +
 
       '<div class="grid grid-2" style="margin-top:16px">' +
@@ -693,7 +703,7 @@
       '</div></div>' +
       '</div>' +
 
-      '<div class="section-title">Actividad de hoy <a class="btn btn-sm btn-ghost" href="#/finanzas">Ver todo</a></div>' +
+      '<div class="section-title">Actividad de hoy <a class="btn btn-sm btn-ghost" href="#finanzas">Ver todo</a></div>' +
       '<div class="card">' +
       (S.sales.length || S.expenses.length
         ? '<div class="list">' + mergeActivity(S.sales, S.expenses).slice(0, 8).map(x => x.concept !== undefined ? expenseRow(x) : saleRow(x)).join('') + '</div>'
@@ -827,7 +837,7 @@
 
     return '' +
       '<div class="page-head"><div><h1>Finanzas</h1><p>' + esc(label) + '</p></div>' +
-      '<div class="head-actions"><button class="btn" data-act="export-csv">' + icon('download') + 'Exportar CSV</button><button class="btn" data-act="print">' + icon('printer') + 'Imprimir</button></div></div>' +
+      '<div class="head-actions"><button class="btn" data-act="export-csv">' + icon('download') + 'Exportar CSV</button>' + (EMBEDDED ? '' : '<button class="btn" data-act="print">' + icon('printer') + 'Imprimir</button>') + '</div></div>' +
 
       '<div class="toolbar"><div class="segmented">' +
       Object.keys(periods).map(k => '<button type="button" class="' + (state.ui.period === k ? 'on' : '') + '" data-act="set-period" data-period="' + k + '">' + periods[k] + '</button>').join('') +
@@ -927,9 +937,9 @@
       '<div class="stack">' +
       '<div class="card"><h3>Catálogo</h3>' +
       '<div class="list">' +
-      '<div class="row"><div class="row-icon">' + icon('scissors') + '</div><div class="row-main"><div class="row-title">Servicios</div><div class="row-sub">' + state.services.length + ' servicios configurados</div></div><a class="btn btn-sm" href="#/cortes">Administrar</a></div>' +
-      '<div class="row"><div class="row-icon producto">' + icon('bag') + '</div><div class="row-main"><div class="row-title">Productos</div><div class="row-sub">' + state.products.length + ' productos en catálogo</div></div><a class="btn btn-sm" href="#/productos">Administrar</a></div>' +
-      '<div class="row"><div class="row-icon gasto">' + icon('receipt') + '</div><div class="row-main"><div class="row-title">Gastos</div><div class="row-sub">' + state.expenses.length + ' gastos registrados</div></div><a class="btn btn-sm" href="#/gastos">Administrar</a></div>' +
+      '<div class="row"><div class="row-icon">' + icon('scissors') + '</div><div class="row-main"><div class="row-title">Servicios</div><div class="row-sub">' + state.services.length + ' servicios configurados</div></div><a class="btn btn-sm" href="#cortes">Administrar</a></div>' +
+      '<div class="row"><div class="row-icon producto">' + icon('bag') + '</div><div class="row-main"><div class="row-title">Productos</div><div class="row-sub">' + state.products.length + ' productos en catálogo</div></div><a class="btn btn-sm" href="#productos">Administrar</a></div>' +
+      '<div class="row"><div class="row-icon gasto">' + icon('receipt') + '</div><div class="row-main"><div class="row-title">Gastos</div><div class="row-sub">' + state.expenses.length + ' gastos registrados</div></div><a class="btn btn-sm" href="#gastos">Administrar</a></div>' +
       '</div></div>' +
 
       '<div class="card"><h3>Copia de seguridad</h3>' +
@@ -961,7 +971,7 @@
 
   function renderNav(active) {
     const links = Object.keys(ROUTES).map(k =>
-      '<a href="#/' + k + '" class="' + (k === active ? 'active' : '') + '"' + (k === active ? ' aria-current="page"' : '') + '>' + icon(ROUTES[k].icon) + '<span>' + ROUTES[k].title + '</span></a>'
+      '<a href="#' + k + '" class="' + (k === active ? 'active' : '') + '"' + (k === active ? ' aria-current="page"' : '') + '>' + icon(ROUTES[k].icon) + '<span>' + ROUTES[k].title + '</span></a>'
     ).join('');
     document.getElementById('nav').innerHTML = links;
     document.getElementById('bottom-nav').innerHTML = links;
@@ -1059,14 +1069,59 @@
     rows.push(['', '', '', 'Costo productos', '', '', -S.cogs]);
     rows.push(['', '', '', 'Gastos', '', '', -S.exp]);
     rows.push(['', '', '', 'Ganancia neta', '', '', S.net]);
-    const csv = '﻿' + rows.map(r => r.map(q).join(',')).join('\r\n');
-    download('informe_' + from + (from !== to ? '_a_' + to : '') + '.csv', csv, 'text/csv;charset=utf-8');
-    toast('Informe exportado');
+    const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
+    fileModal('Exportar informe', 'informe_' + from + (from !== to ? '_a_' + to : '') + '.csv', csv, 'text/csv;charset=utf-8',
+      'Descarga el archivo para abrirlo en Excel, o copia el texto y pégalo en una hoja de cálculo.');
   }
 
   function backup() {
-    download('respaldo_barberia_' + todayKey() + '.json', JSON.stringify(state, null, 2), 'application/json');
-    toast('Copia descargada');
+    fileModal('Copia de seguridad', 'respaldo_barberia_' + todayKey() + '.json', JSON.stringify(state), 'application/json',
+      'Descarga el archivo o copia el texto y guárdalo en un lugar seguro (notas, correo, WhatsApp). Lo necesitarás para restaurar tus datos.');
+  }
+
+  function fileModal(title, name, content, type, hint) {
+    openModal({
+      title, submit: 'Cerrar', noCancel: true,
+      body: '<p class="muted" style="margin-top:0">' + esc(hint) + '</p>' +
+        '<textarea class="input" id="export-text" readonly rows="7" style="font:12px/1.4 ui-monospace,Menlo,monospace;resize:vertical">' + esc(content) + '</textarea>' +
+        '<div class="head-actions" style="margin-top:12px"><button type="button" class="btn" id="export-copy">' + icon('check') + 'Copiar texto</button>' +
+        '<button type="button" class="btn" id="export-dl">' + icon('download') + 'Descargar archivo</button></div>',
+      onOpen(form) {
+        const ta = form.querySelector('#export-text');
+        form.querySelector('#export-copy').addEventListener('click', () => {
+          const fallback = () => { ta.focus(); ta.select(); toast('Texto seleccionado: cópialo desde tu teclado o menú'); };
+          try {
+            navigator.clipboard.writeText(content).then(() => toast('Copiado'), fallback);
+          } catch (e) { fallback(); }
+        });
+        form.querySelector('#export-dl').addEventListener('click', () => {
+          download(name, (type.indexOf('csv') >= 0 ? '\ufeff' : '') + content, type);
+        });
+      },
+      onSubmit() {}
+    });
+  }
+
+  function restoreForm() {
+    openModal({
+      title: 'Restaurar copia', submit: 'Restaurar',
+      body: '<p class="muted" style="margin-top:0">Pega el texto de tu copia o elige el archivo. Se reemplazarán todos los datos actuales.</p>' +
+        '<textarea class="input" name="data" id="restore-text" rows="7" placeholder="Pega aquí tu copia…" style="font:12px/1.4 ui-monospace,Menlo,monospace;resize:vertical"></textarea>' +
+        '<div class="head-actions" style="margin-top:12px"><button type="button" class="btn" id="restore-file">' + icon('upload') + 'Elegir archivo</button></div>',
+      onOpen(form) {
+        form.querySelector('#restore-file').addEventListener('click', () => document.getElementById('import-file').click());
+      },
+      onSubmit(fd, form) {
+        try {
+          const data = JSON.parse(fd.data || '');
+          if (!data || !Array.isArray(data.sales) || !Array.isArray(data.services)) throw new Error('formato');
+          state = normalize(data);
+          save(); toast('Copia restaurada');
+        } catch (err) {
+          return invalid(form, 'data', 'Ese texto no es una copia válida');
+        }
+      }
+    });
   }
 
   document.getElementById('import-file').addEventListener('change', e => {
@@ -1075,15 +1130,8 @@
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!data || !Array.isArray(data.sales) || !Array.isArray(data.services)) throw new Error('formato');
-        if (!confirm('Esto reemplazará todos los datos actuales por los de la copia. ¿Continuar?')) return;
-        state = normalize(data);
-        save(); toast('Copia restaurada'); render();
-      } catch (err) {
-        toast('El archivo no es una copia válida', { error: true });
-      }
+      const ta = document.getElementById('restore-text');
+      if (ta) { ta.value = String(reader.result); toast('Archivo cargado: toca Restaurar para continuar'); }
     };
     reader.readAsText(file);
   });
@@ -1121,16 +1169,16 @@
       case 'export-csv': exportCsv(); break;
       case 'print': window.print(); break;
       case 'backup': backup(); break;
-      case 'restore': document.getElementById('import-file').click(); break;
+      case 'restore': restoreForm(); break;
       case 'clear-records':
-        if (confirm('¿Borrar todas las ventas y gastos? Se conservan tus servicios y productos. Esta acción no se puede deshacer.')) {
-          state.sales = []; state.expenses = []; save(); toast('Registros borrados'); rerender();
-        }
+        confirmBox('Borrar registros', '¿Borrar todas las ventas y gastos? Se conservan tus servicios y productos. Esta acción no se puede deshacer.', 'Borrar registros', () => {
+          state.sales = []; state.expenses = []; save(); toast('Registros borrados');
+        });
         break;
       case 'reset-all':
-        if (confirm('¿Restablecer toda la aplicación? Se borrarán servicios, productos, ventas, gastos y ajustes.')) {
-          state = seed(); save(); toast('Aplicación restablecida'); render();
-        }
+        confirmBox('Restablecer todo', '¿Restablecer toda la aplicación? Se borrarán servicios, productos, ventas, gastos y ajustes.', 'Restablecer', () => {
+          state = seed(); save(); toast('Aplicación restablecida');
+        });
         break;
     }
   });

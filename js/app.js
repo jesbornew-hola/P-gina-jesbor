@@ -281,6 +281,8 @@
   let modalCleanup = null;
   function openModal(o) {
     closeModal();
+    // Evita que un aviso con "Deshacer" quede sobre los botones del formulario
+    document.getElementById('toast-root').innerHTML = '';
     const root = document.getElementById('modal-root');
     root.innerHTML =
       '<div class="modal-backdrop" data-close>' +
